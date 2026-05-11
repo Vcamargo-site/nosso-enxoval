@@ -1307,43 +1307,41 @@ function deleteLink(encodedUrl) {
   showToast('Link removido', '');
 }
 
-async function submitLink() {
+function submitLink() {
   const url = document.getElementById('modal-input').value.trim();
   if (!url) { showToast('Cole um link primeiro', ''); return; }
   if (!url.startsWith('http')) { showToast('O link deve começar com http...', ''); return; }
 
-  const btn = document.getElementById('modal-fetch-btn');
   const site = detectSite(url);
-  btn.disabled = true;
+  const currentId = modalId;
 
+  // Salva o link imediatamente sem bloquear
   const entry = { url, site, price: null, image: null, title: null, addedAt: Date.now() };
+  if (!userLinks[currentId]) userLinks[currentId] = {};
+  userLinks[currentId][url] = entry;
+  saveLinks();
+  refreshCard(currentId);
+  renderModalLinks();
+  document.getElementById('modal-input').value = '';
 
   if (site === 'mercadolivre') {
-    btn.textContent = '🔄 Conectando ao Mercado Livre…';
-    const info = await fetchMLInfo(url);
-    if (info) {
-      entry.price = info.price;
-      entry.image = info.image;
-      entry.title = info.title;
-    }
+    showToast('🔗 Link salvo! Buscando preço em segundo plano...', '');
+    // Busca em segundo plano — não bloqueia a interface
+    fetchMLInfo(url).then(info => {
+      if (!info) { showToast('Preço não encontrado automaticamente.', ''); return; }
+      if (!userLinks[currentId]?.[url]) return;
+      userLinks[currentId][url].price = info.price;
+      userLinks[currentId][url].image = info.image;
+      userLinks[currentId][url].title = info.title;
+      saveLinks();
+      refreshCard(currentId);
+      if (modalId === currentId) renderModalLinks();
+      if (info.price) showToast(`✅ ${fmtPrice(info.price)} encontrado!`, 'tgreen');
+      else showToast('Preço não encontrado automaticamente.', '');
+    }).catch(() => {});
   } else {
-    btn.textContent = '💾 Salvando…';
-    await new Promise(r => setTimeout(r, 300)); // pequena pausa visual
+    showToast('🔗 Link salvo! Busca automática funciona só no ML.', '');
   }
-
-  if (!userLinks[modalId]) userLinks[modalId] = {};
-  userLinks[modalId][url] = entry;
-  saveLinks();
-  refreshCard(modalId);
-  renderModalLinks();
-
-  document.getElementById('modal-input').value = '';
-  btn.textContent = '🔍 Buscar preço e foto';
-  btn.disabled = false;
-
-  if (entry.price)            showToast(`✅ ${fmtPrice(entry.price)} encontrado!`, 'tgreen');
-  else if (site === 'mercadolivre') showToast('🔗 Link salvo. Preço/foto não encontrado (link de catálogo).', '');
-  else                        showToast('🔗 Link salvo! Busca automática funciona só no ML.', '');
 }
 
 async function pasteAndFetch() {
