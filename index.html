@@ -597,6 +597,9 @@
     <!-- Lista de links existentes -->
     <div id="modal-links-list"></div>
 
+    <!-- Foto manual -->
+    <div id="modal-photo-section"></div>
+
     <!-- Adicionar novo link -->
     <div style="margin-top:16px">
       <div class="modal-label">Adicionar novo link</div>
@@ -788,16 +791,35 @@ function initFirebase(config) {
 
     setSyncStatus('syncing', 'Conectando...');
 
-    // Escuta mudanças em tempo real vindas de outros dispositivos
+    let firstSync = true;
     db.ref('enxoval').on('value', snap => {
       if (ignoreNextSync) { ignoreNextSync = false; return; }
-      const data = snap.val() || {};
-      purchased   = data.purchased || {};
-      userLinks   = migrateLinks(data.links  || {});
-      customItems = data.custom    || {};
-      localStorage.setItem('enxoval_v2',     JSON.stringify(purchased));
-      localStorage.setItem('enxoval_links',  JSON.stringify(userLinks));
-      localStorage.setItem('enxoval_custom', JSON.stringify(customItems));
+      const data = snap.val();
+
+      if (firstSync) {
+        firstSync = false;
+        const fbPurchased = (data && data.purchased) || {};
+        const fbLinks     = migrateLinks((data && data.links) || {});
+        const fbCustom    = (data && data.custom) || {};
+        const fbImages    = (data && data.images) || {};
+        purchased    = { ...fbPurchased, ...purchased    };
+        userLinks    = { ...fbLinks,     ...userLinks    };
+        customItems  = { ...fbCustom,    ...customItems  };
+        customImages = { ...fbImages,    ...customImages };
+        ignoreNextSync = true;
+        db.ref('enxoval').set({ purchased, links: userLinks, custom: customItems, images: customImages });
+      } else {
+        if (!data) return;
+        purchased    = data.purchased || {};
+        userLinks    = migrateLinks(data.links || {});
+        customItems  = data.custom    || {};
+        customImages = data.images    || {};
+      }
+
+      localStorage.setItem('enxoval_v2',      JSON.stringify(purchased));
+      localStorage.setItem('enxoval_links',   JSON.stringify(userLinks));
+      localStorage.setItem('enxoval_custom',  JSON.stringify(customItems));
+      localStorage.setItem('enxoval_images',  JSON.stringify(customImages));
       updateStats(); buildTabs(); renderCat();
     }, () => setSyncStatus('disconnected', 'Erro de conexão'));
 
@@ -964,6 +986,7 @@ function getBestLink(productId) {
 }
 
 function getEffectiveImage(p) {
+  if (customImages[p.id]) return { type:'url', src: customImages[p.id] };
   const links = getLinksArr(p.id);
   const withImg = links.filter(l => l.image).sort((a,b) => (a.price||Infinity)-(b.price||Infinity));
   if (withImg.length) return { type:'url', src: withImg[0].image };
@@ -1244,6 +1267,7 @@ function openModal(id) {
   document.getElementById('modal-product-name').textContent = p.name;
   document.getElementById('modal-input').value = '';
   renderModalLinks();
+  renderModalPhoto();
   document.getElementById('modal-overlay').classList.add('open');
   setTimeout(() => document.getElementById('modal-input').focus(), 150);
 }
@@ -1360,6 +1384,43 @@ function refreshCard(id) {
   if (el) el.outerHTML = renderCard(p);
 }
 
+
+// ── FOTOS MANUAIS ──
+let customImages = JSON.parse(localStorage.getItem('enxoval_images') || '{}');
+
+function saveImages() {
+  localStorage.setItem('enxoval_images', JSON.stringify(customImages));
+  if (db) { ignoreNextSync = true; db.ref('enxoval/images').set(customImages); }
+}
+
+function saveProductImage(productId, url) {
+  if (url) customImages[productId] = url;
+  else delete customImages[productId];
+  saveImages();
+  refreshCard(productId);
+  renderModalPhoto();
+}
+
+function renderModalPhoto() {
+  const el = document.getElementById('modal-photo-section');
+  if (!el) return;
+  const current = customImages[modalId] || '';
+  el.innerHTML = `
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="modal-label">📷 Foto do produto</div>
+      ${current ? `<img src="${current}" style="width:100%;height:90px;object-fit:contain;border-radius:8px;background:#f0f4f8;margin:8px 0">` : ''}
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <input id="modal-photo-input" class="modal-input" type="url"
+          placeholder="Cole a URL de uma imagem (clique direito → copiar endereço da imagem)"
+          value="${current}" style="flex:1;font-size:12px" />
+        <button onclick="saveProductImage(modalId, document.getElementById('modal-photo-input').value.trim())"
+          style="padding:0 14px;border-radius:8px;background:var(--green);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          Salvar
+        </button>
+      </div>
+      ${current ? `<button onclick="saveProductImage(modalId,'')" style="margin-top:6px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer;padding:0">🗑 Remover foto</button>` : ''}
+    </div>`;
+}
 
 // ── ITENS PERSONALIZADOS ──
 let customItems = JSON.parse(localStorage.getItem('enxoval_custom') || '{}');
