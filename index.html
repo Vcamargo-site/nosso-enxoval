@@ -880,15 +880,15 @@ function detectSite(url) {
 }
 
 function extractMLId(url) {
-  // wid=MLB123 ou item_id:MLB123 nos parâmetros (links compartilhados)
-  let m = url.match(/[?&]wid=(MLB\d+)/i) || url.match(/item_id:(MLB\d+)/i);
-  if (m) return { id: m[1], type: 'item' };
-  // path de item: /MLB123456789-
+  // path de catálogo: /p/MLB12345678 — tem prioridade (não precisa de auth)
+  let m = url.match(/\/p\/(MLB\d+)/i);
+  if (m) return { id: m[1], type: 'catalog' };
+  // path de item direto: /MLB123456789-
   m = url.match(/\/(MLB\d{9,12})[-_]/i);
   if (m) return { id: m[1], type: 'item' };
-  // path de catálogo: /p/MLB12345678
-  m = url.match(/\/p\/(MLB\d+)/i);
-  if (m) return { id: m[1], type: 'catalog' };
+  // wid= ou item_id: nos parâmetros (links compartilhados sem /p/)
+  m = url.match(/[?&]wid=(MLB\d+)/i) || url.match(/item_id:(MLB\d+)/i);
+  if (m) return { id: m[1], type: 'item' };
   return null;
 }
 
